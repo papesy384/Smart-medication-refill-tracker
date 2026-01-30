@@ -20,14 +20,19 @@
           </p>
         </div>
         <div class="header-actions">
-          <button class="btn btn-secondary" id="toggleText">
-            Toggle Large Text
+          <button class="btn btn-secondary" id="toggleHighVisibility" title="High visibility: large print and oversized buttons">
+            <span id="highVisibilityLabel">Compact view</span>
+          </button>
+          <button class="btn btn-secondary" id="enableReminders">
+            Enable reminders
           </button>
           <button class="btn btn-primary" id="addMedication">
             Add Medication
           </button>
         </div>
       </header>
+
+      <div class="reminder-banner" id="reminderBanner" aria-live="polite" aria-hidden="true"></div>
 
       <main>
         <section class="dashboard">
@@ -82,7 +87,45 @@
           <span class="status-dot yellow"></span> Yellow = pending,
           <span class="status-dot red"></span> Red = urgent.
         </p>
+        <p>
+          <button type="button" class="btn-link" id="openCaregiverInfo">For caregivers</button>
+          ·
+          <button type="button" class="btn-link" id="openFeedback">Send feedback</button>
+        </p>
       </footer>
+    </div>
+
+    <div class="modal-overlay" id="feedbackModal" aria-hidden="true">
+      <div class="modal modal--small" role="dialog" aria-labelledby="feedbackTitle" aria-modal="true">
+        <div class="modal-header">
+          <h2 id="feedbackTitle">Send feedback</h2>
+          <button type="button" class="modal-close" id="closeFeedbackModal" aria-label="Close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p class="caregiver-intro">Your feedback helps us improve. Tell us what works or what to improve.</p>
+          <label for="feedbackText">Your message (optional)</label>
+          <textarea id="feedbackText" rows="4" placeholder="e.g. Feature request, bug report, or general feedback…"></textarea>
+          <div class="modal-actions">
+            <button type="button" class="btn btn-secondary" id="cancelFeedback">Cancel</button>
+            <button type="button" class="btn btn-primary" id="copyFeedback">Copy feedback</button>
+          </div>
+          <p class="hint" id="feedbackHint"></p>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-overlay" id="caregiverModal" aria-hidden="true">
+      <div class="modal modal--small" role="dialog" aria-labelledby="caregiverTitle" aria-modal="true">
+        <div class="modal-header">
+          <h2 id="caregiverTitle">For caregivers</h2>
+          <button type="button" class="modal-close" id="closeCaregiverModal" aria-label="Close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p class="caregiver-intro">Caregivers can use this app when with the patient to see medication status, next doses, and low stock or expiring meds. Copy the status summary below to share by email or message.</p>
+          <button type="button" class="btn btn-primary" id="copyCaregiverSummary">Copy status summary</button>
+          <p class="hint" id="caregiverCopyHint"></p>
+        </div>
+      </div>
     </div>
 
     <div class="modal-overlay" id="addMedModal" aria-hidden="true">
@@ -92,7 +135,7 @@
           <button type="button" class="modal-close" id="closeAddMed" aria-label="Close">&times;</button>
         </div>
         <form id="addMedForm" class="modal-body">
-          <div class="barcode-section">
+          <div class="barcode-section" id="addMedBarcodeSection">
             <p class="barcode-label">Add by scanning or entering barcode (NDC)</p>
             <button type="button" class="btn btn-primary btn-scan-camera" id="scanWithCamera">
               Scan barcode with camera
@@ -124,6 +167,9 @@
           <label for="medExpiresOn">Expires on</label>
           <input type="date" id="medExpiresOn" name="expiresOn" required />
 
+          <label for="medImageUrl">Image URL (optional)</label>
+          <input type="url" id="medImageUrl" name="imageUrl" placeholder="https://…" />
+
           <div class="modal-actions">
             <button type="button" class="btn btn-secondary" id="cancelAddMed">Cancel</button>
             <button type="submit" class="btn btn-primary">Save Medication</button>
@@ -138,6 +184,23 @@
         <video id="scanVideo" playsinline muted></video>
         <p class="scan-status" id="scanStatus">Starting camera…</p>
         <button type="button" class="btn btn-secondary" id="cancelScan">Cancel</button>
+      </div>
+    </div>
+
+    <div class="modal-overlay" id="updateStockModal" aria-hidden="true">
+      <div class="modal modal--small" role="dialog" aria-labelledby="updateStockTitle" aria-modal="true">
+        <div class="modal-header">
+          <h2 id="updateStockTitle">Update stock</h2>
+          <button type="button" class="modal-close" id="closeUpdateStock" aria-label="Close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <label for="updateStockInput">Stock (number of doses)</label>
+          <input type="number" id="updateStockInput" min="0" value="0" />
+          <div class="modal-actions">
+            <button type="button" class="btn btn-secondary" id="cancelUpdateStock">Cancel</button>
+            <button type="button" class="btn btn-primary" id="saveUpdateStock">Save</button>
+          </div>
+        </div>
       </div>
     </div>
 

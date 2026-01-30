@@ -11,10 +11,18 @@ const pendingDoseValue = document.getElementById("pendingDoseValue");
 const lowInventoryValue = document.getElementById("lowInventoryValue");
 const expiringValue = document.getElementById("expiringValue");
 
-// Load medications from Supabase
+// Load medications from Supabase (no errors when Supabase is not configured)
 async function loadMedications() {
+  if (!window.supabase || typeof window.supabase.from !== 'function') {
+    medications = [];
+    if (medList) {
+      medList.innerHTML = `<p class="hint">Supabase is not configured. Add your project URL and anon key in <code>js/config.js</code>, then create the medications table (see <code>supabase-schema.sql</code>).</p>`;
+    }
+    render();
+    return;
+  }
   try {
-    const { data, error } = await supabase
+    const { data, error } = await window.supabase
       .from('medications')
       .select('*')
       .order('id');
@@ -30,7 +38,8 @@ async function loadMedications() {
       stock: med.stock,
       refillThreshold: med.refill_threshold,
       expiresOn: med.expires_on,
-      lastTaken: med.last_taken
+      lastTaken: med.last_taken,
+      imageUrl: med.image_url || null
     }));
     
     render();
@@ -43,7 +52,7 @@ async function loadMedications() {
 // Helper function to update last taken timestamp
 async function updateLastTaken(medicationId) {
   try {
-    const { error } = await supabase
+    const { error } = await window.supabase
       .from('medications')
       .update({ last_taken: new Date().toISOString() })
       .eq('id', medicationId);
@@ -57,33 +66,122 @@ async function updateLastTaken(medicationId) {
 
 // Helper function to update stock
 async function updateStock(medicationId, newStock) {
-  try {
-    const { error } = await supabase
+    const { error } = await window.supabase
       .from('medications')
       .update({ stock: newStock })
+    .eq('id', medicationId);
+
+  if (error) throw error;
+  await loadMedications();
+}
+
+// Helper function to update medication (edit)
+async function updateMedication(medicationId, data) {
+  try {
+    const updateData = {
+      name: data.name,
+      dosage: data.dosage,
+      schedule: data.schedule,
+      stock: data.stock,
+      refill_threshold: data.refill_threshold,
+      expires_on: data.expires_on
+    };
+    if (data.image_url !== undefined) updateData.image_url = data.image_url || null;
+    const { error } = await window.supabase
+      .from('medications')
+      .update(updateData)
       .eq('id', medicationId);
-    
+
     if (error) throw error;
-    await loadMedications(); // Reload data
+    await loadMedications();
   } catch (error) {
-    console.error('Error updating stock:', error);
+    console.error('Error updating medication:', error);
+    throw error;
   }
 }
 
-document.getElementById("toggleText").addEventListener("click", () => {
-  document.body.classList.toggle("large-text");
-});
+// Helper function to delete medication
+async function deleteMedication(medicationId) {
+  try {
+    const { error } = await window.supabase
+      .from('medications')
+      .delete()
+      .eq('id', medicationId);
+
+    if (error) throw error;
+    await loadMedications();
+  } catch (error) {
+    console.error('Error deleting medication:', error);
+    throw error;
+  }
+}
+
+// PRD: Customized Accessibility – high-visibility (large print + oversized buttons), persisted
+const HIGH_VISIBILITY_KEY = "highVisibility";
+const toggleHighVisibilityBtn = document.getElementById("toggleHighVisibility");
+const highVisibilityLabelEl = document.getElementById("highVisibilityLabel");
+
+function getHighVisibility() {
+  const stored = localStorage.getItem(HIGH_VISIBILITY_KEY);
+  return stored === null ? true : stored === "true";
+}
+
+function setHighVisibility(on) {
+  localStorage.setItem(HIGH_VISIBILITY_KEY, on ? "true" : "false");
+  document.body.classList.toggle("high-visibility", on);
+  if (highVisibilityLabelEl) highVisibilityLabelEl.textContent = on ? "Compact view" : "High visibility";
+}
+
+function updateHighVisibilityLabel() {
+  const on = document.body.classList.contains("high-visibility");
+  if (highVisibilityLabelEl) highVisibilityLabelEl.textContent = on ? "Compact view" : "High visibility";
+}
+
+if (toggleHighVisibilityBtn) {
+  toggleHighVisibilityBtn.addEventListener("click", () => {
+    const on = !document.body.classList.contains("high-visibility");
+    setHighVisibility(on);
+  });
+}
+setHighVisibility(getHighVisibility());
 
 const addMedModal = document.getElementById("addMedModal");
 const addMedForm = document.getElementById("addMedForm");
 const closeAddMedBtn = document.getElementById("closeAddMed");
 const cancelAddMedBtn = document.getElementById("cancelAddMed");
+const addMedTitleEl = document.getElementById("addMedTitle");
+const addMedBarcodeSection = document.getElementById("addMedBarcodeSection");
+
+let editingMedId = null;
 
 function openAddMedModal() {
+  editingMedId = null;
+  if (addMedTitleEl) addMedTitleEl.textContent = "Add Medication";
+  if (addMedBarcodeSection) addMedBarcodeSection.style.display = "";
   addMedModal.classList.add("is-open");
   addMedModal.setAttribute("aria-hidden", "false");
   document.getElementById("barcodeHint").textContent = "";
   document.getElementById("medBarcode").value = "";
+  addMedForm.reset();
+  document.getElementById("medStock").value = "30";
+  document.getElementById("medRefillThreshold").value = "7";
+  document.getElementById("medName").focus();
+}
+
+function openEditMedModal(med) {
+  editingMedId = med.id;
+  if (addMedTitleEl) addMedTitleEl.textContent = "Edit Medication";
+  if (addMedBarcodeSection) addMedBarcodeSection.style.display = "none";
+  document.getElementById("medName").value = med.name;
+  document.getElementById("medDosage").value = med.dosage || "";
+  document.getElementById("medSchedule").value = Array.isArray(med.schedule) ? med.schedule.join(", ") : "";
+  document.getElementById("medStock").value = med.stock;
+  document.getElementById("medRefillThreshold").value = med.refillThreshold;
+  document.getElementById("medExpiresOn").value = med.expiresOn ? med.expiresOn.slice(0, 10) : "";
+  const imageUrlEl = document.getElementById("medImageUrl");
+  if (imageUrlEl) imageUrlEl.value = med.imageUrl || "";
+  addMedModal.classList.add("is-open");
+  addMedModal.setAttribute("aria-hidden", "false");
   document.getElementById("medName").focus();
 }
 
@@ -137,6 +235,9 @@ async function lookupNDC(barcode) {
 }
 
 function closeAddMedModal() {
+  editingMedId = null;
+  if (addMedTitleEl) addMedTitleEl.textContent = "Add Medication";
+  if (addMedBarcodeSection) addMedBarcodeSection.style.display = "";
   stopScanCamera();
   addMedModal.classList.remove("is-open");
   addMedModal.setAttribute("aria-hidden", "true");
@@ -242,6 +343,66 @@ cancelScanBtn.addEventListener("click", stopScanCamera);
 closeAddMedBtn.addEventListener("click", closeAddMedModal);
 cancelAddMedBtn.addEventListener("click", closeAddMedModal);
 
+// Update stock modal
+const updateStockModalEl = document.getElementById("updateStockModal");
+const updateStockInputEl = document.getElementById("updateStockInput");
+const closeUpdateStockBtn = document.getElementById("closeUpdateStock");
+const cancelUpdateStockBtn = document.getElementById("cancelUpdateStock");
+const saveUpdateStockBtn = document.getElementById("saveUpdateStock");
+
+let updateStockMedId = null;
+
+function openUpdateStockModal(med) {
+  updateStockMedId = med.id;
+  if (updateStockInputEl) {
+    updateStockInputEl.value = med.stock;
+    updateStockInputEl.min = "0";
+  }
+  if (updateStockModalEl) {
+    updateStockModalEl.classList.add("is-open");
+    updateStockModalEl.setAttribute("aria-hidden", "false");
+    if (updateStockInputEl) updateStockInputEl.focus();
+  }
+}
+
+function closeUpdateStockModal() {
+  updateStockMedId = null;
+  if (updateStockModalEl) {
+    updateStockModalEl.classList.remove("is-open");
+    updateStockModalEl.setAttribute("aria-hidden", "true");
+  }
+}
+
+if (saveUpdateStockBtn && updateStockInputEl) {
+  saveUpdateStockBtn.addEventListener("click", async () => {
+    const value = parseInt(updateStockInputEl.value, 10);
+    if (isNaN(value) || value < 0) {
+      alert("Please enter a valid number (0 or more).");
+      return;
+    }
+    if (!updateStockMedId) return;
+    saveUpdateStockBtn.disabled = true;
+    saveUpdateStockBtn.textContent = "Saving…";
+    try {
+      await updateStock(updateStockMedId, value);
+      closeUpdateStockModal();
+    } catch (err) {
+      console.error("Error updating stock:", err);
+      alert("Could not update stock. Check the console or your Supabase setup.");
+    }
+    saveUpdateStockBtn.disabled = false;
+    saveUpdateStockBtn.textContent = "Save";
+  });
+}
+
+if (closeUpdateStockBtn) closeUpdateStockBtn.addEventListener("click", closeUpdateStockModal);
+if (cancelUpdateStockBtn) cancelUpdateStockBtn.addEventListener("click", closeUpdateStockModal);
+if (updateStockModalEl) {
+  updateStockModalEl.addEventListener("click", (e) => {
+    if (e.target === updateStockModalEl) closeUpdateStockModal();
+  });
+}
+
 addMedModal.addEventListener("click", (e) => {
   if (e.target === addMedModal) {
     stopScanCamera();
@@ -249,9 +410,130 @@ addMedModal.addEventListener("click", (e) => {
   }
 });
 
+// PRD: Caregiver visibility – support for those managing remote care
+const caregiverModalEl = document.getElementById("caregiverModal");
+const closeCaregiverModalBtn = document.getElementById("closeCaregiverModal");
+const openCaregiverInfoBtn = document.getElementById("openCaregiverInfo");
+const copyCaregiverSummaryBtn = document.getElementById("copyCaregiverSummary");
+const caregiverCopyHintEl = document.getElementById("caregiverCopyHint");
+
+function openCaregiverModal() {
+  if (caregiverModalEl) {
+    caregiverModalEl.classList.add("is-open");
+    caregiverModalEl.setAttribute("aria-hidden", "false");
+  }
+}
+
+function closeCaregiverModal() {
+  if (caregiverModalEl) {
+    caregiverModalEl.classList.remove("is-open");
+    caregiverModalEl.setAttribute("aria-hidden", "true");
+  }
+  if (caregiverCopyHintEl) caregiverCopyHintEl.textContent = "";
+}
+
+function buildCaregiverSummary() {
+  const now = new Date();
+  const dateStr = now.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric", year: "numeric" });
+  const sorted = medications
+    .map((med) => ({ med, nextDose: getNextDoseDate(med, now) }))
+    .sort((a, b) => a.nextDose - b.nextDose);
+  const next = sorted[0];
+  const pendingCount = medications.filter((m) => getDoseStatus(m, now).level === "yellow").length;
+  const lowCount = medications.filter((m) => m.stock <= m.refillThreshold).length;
+  const expiringCount = medications.filter((m) => {
+    const days = Math.ceil((new Date(m.expiresOn) - now) / 86400000);
+    return days <= 30 && days >= 0;
+  }).length;
+
+  let text = `Medication status – ${dateStr}\n\n`;
+  text += next
+    ? `Next dose: ${next.med.name} at ${formatTime(next.nextDose)}\n`
+    : "Next dose: None scheduled\n";
+  text += `Pending (due now): ${pendingCount}\n`;
+  text += `Low stock: ${lowCount}\n`;
+  text += `Expiring within 30 days: ${expiringCount}\n\n`;
+  text += "Medications:\n";
+  medications.forEach((m) => {
+    const status = getDoseStatus(m, now);
+    const nextDose = getNextDoseDate(m, now);
+    text += `- ${m.name} (${m.dosage}): ${status.label}, next ${formatTime(nextDose)}, stock ${m.stock}, expires ${formatDate(new Date(m.expiresOn))}\n`;
+  });
+  return text;
+}
+
+// PRD VI: Success metrics – collect feedback
+const feedbackModalEl = document.getElementById("feedbackModal");
+const closeFeedbackModalBtn = document.getElementById("closeFeedbackModal");
+const openFeedbackBtn = document.getElementById("openFeedback");
+const feedbackTextEl = document.getElementById("feedbackText");
+const cancelFeedbackBtn = document.getElementById("cancelFeedback");
+const feedbackHintEl = document.getElementById("feedbackHint");
+
+function openFeedbackModal() {
+  if (feedbackModalEl) {
+    feedbackModalEl.classList.add("is-open");
+    feedbackModalEl.setAttribute("aria-hidden", "false");
+    if (feedbackTextEl) feedbackTextEl.value = "";
+    if (feedbackHintEl) feedbackHintEl.textContent = "";
+  }
+}
+
+function closeFeedbackModal() {
+  if (feedbackModalEl) {
+    feedbackModalEl.classList.remove("is-open");
+    feedbackModalEl.setAttribute("aria-hidden", "true");
+  }
+}
+
+if (openFeedbackBtn) openFeedbackBtn.addEventListener("click", openFeedbackModal);
+if (closeFeedbackModalBtn) closeFeedbackModalBtn.addEventListener("click", closeFeedbackModal);
+if (cancelFeedbackBtn) cancelFeedbackBtn.addEventListener("click", closeFeedbackModal);
+if (feedbackModalEl) {
+  feedbackModalEl.addEventListener("click", (e) => {
+    if (e.target === feedbackModalEl) closeFeedbackModal();
+  });
+}
+const copyFeedbackBtnEl = document.getElementById("copyFeedback");
+if (copyFeedbackBtnEl) {
+  copyFeedbackBtnEl.addEventListener("click", async () => {
+    const message = feedbackTextEl ? feedbackTextEl.value.trim() : "";
+    const date = new Date().toISOString().slice(0, 10);
+    const text = `Smart Medication & Refill Tracker – Feedback (${date})\n\n${message || "(No message)"}`;
+    try {
+      await navigator.clipboard.writeText(text);
+      if (feedbackHintEl) feedbackHintEl.textContent = "Copied. Paste into an email or survey to send.";
+    } catch (err) {
+      if (feedbackHintEl) feedbackHintEl.textContent = "Could not copy. You can copy the text manually.";
+    }
+  });
+}
+
+if (openCaregiverInfoBtn) openCaregiverInfoBtn.addEventListener("click", openCaregiverModal);
+if (closeCaregiverModalBtn) closeCaregiverModalBtn.addEventListener("click", closeCaregiverModal);
+if (caregiverModalEl) {
+  caregiverModalEl.addEventListener("click", (e) => {
+    if (e.target === caregiverModalEl) closeCaregiverModal();
+  });
+}
+if (copyCaregiverSummaryBtn) {
+  copyCaregiverSummaryBtn.addEventListener("click", async () => {
+    const text = buildCaregiverSummary();
+    try {
+      await navigator.clipboard.writeText(text);
+      if (caregiverCopyHintEl) caregiverCopyHintEl.textContent = "Copied to clipboard.";
+    } catch (err) {
+      if (caregiverCopyHintEl) caregiverCopyHintEl.textContent = "Could not copy. Select and copy manually.";
+    }
+  });
+}
+
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
     if (scanOverlay.classList.contains("is-open")) stopScanCamera();
+    else if (updateStockModalEl && updateStockModalEl.classList.contains("is-open")) closeUpdateStockModal();
+    else if (feedbackModalEl && feedbackModalEl.classList.contains("is-open")) closeFeedbackModal();
+    else if (caregiverModalEl && caregiverModalEl.classList.contains("is-open")) closeCaregiverModal();
     else if (addMedModal.classList.contains("is-open")) closeAddMedModal();
   }
 });
@@ -275,23 +557,47 @@ addMedForm.addEventListener("submit", async (e) => {
     return;
   }
 
-  try {
-    const { error } = await supabase.from("medications").insert({
-      name,
-      dosage,
-      schedule,
-      stock,
-      refill_threshold: refillThreshold,
-      expires_on: expiresOn,
-      last_taken: null
-    });
+  // Check if Supabase is configured and client is valid
+  if (!window.supabase || typeof window.supabase.from !== "function") {
+    alert(
+      "Supabase is not configured.\n\n1. Open js/config.js\n2. Set SUPABASE_URL and SUPABASE_ANON_KEY from your Supabase project (Project Settings → API).\n3. Create the medications table in Supabase (see supabase-schema.sql in the project)."
+    );
+    return;
+  }
 
-    if (error) throw error;
-    closeAddMedModal();
-    await loadMedications();
+  const imageUrl = document.getElementById("medImageUrl").value.trim() || null;
+  const payload = {
+    name,
+    dosage,
+    schedule,
+    stock,
+    refill_threshold: refillThreshold,
+    expires_on: expiresOn,
+    image_url: imageUrl
+  };
+
+  try {
+    if (editingMedId) {
+      await updateMedication(editingMedId, payload);
+      closeAddMedModal();
+    } else {
+      const insertData = { ...payload, last_taken: null };
+      if (insertData.image_url === null) delete insertData.image_url;
+      const { error } = await window.supabase.from("medications").insert(insertData);
+      if (error) throw error;
+      closeAddMedModal();
+      await loadMedications();
+    }
   } catch (err) {
-    console.error("Error adding medication:", err);
-    alert("Could not add medication. Check the console or your Supabase setup.");
+    console.error(editingMedId ? "Error updating medication:" : "Error adding medication:", err);
+    const msg = err?.message || String(err);
+    const hint =
+      msg.includes("relation") && msg.includes("does not exist")
+        ? "The medications table doesn't exist. Run the SQL in supabase-schema.sql in your Supabase SQL editor."
+        : msg.includes("row-level security") || msg.includes("policy")
+          ? "Supabase is blocking the operation. Add an RLS policy (see supabase-schema.sql)."
+          : msg;
+    alert(editingMedId ? "Could not update medication.\n\n" + hint : "Could not add medication.\n\n" + hint);
   }
 });
 
@@ -428,14 +734,26 @@ function renderMedications(filter, now) {
     .map((med) => {
       const status = getDoseStatus(med, now);
       const nextDose = getNextDoseDate(med, now);
+      const imgHtml = med.imageUrl
+        ? `<img class="med-card-img" src="${String(med.imageUrl).replace(/"/g, "&quot;")}" alt="" loading="lazy" onerror="this.remove()" />`
+        : "";
       return `
         <article class="med-card">
-          <div>
+          <div class="med-card-main">
+            ${imgHtml}
+            <div>
             <p class="med-title">${med.name} · ${med.dosage}</p>
             <div class="med-meta">
               <span>Next dose: ${formatTime(nextDose)}</span>
               <span>Stock: ${med.stock} left</span>
               <span>Expires: ${formatDate(new Date(med.expiresOn))}</span>
+            </div>
+            <div class="med-card-actions">
+              <button type="button" class="btn btn-small btn-secondary" data-edit-med data-med-id="${med.id}">Edit</button>
+              <button type="button" class="btn btn-small btn-secondary" data-update-stock data-med-id="${med.id}">Update stock</button>
+              <button type="button" class="btn btn-small btn-primary" data-mark-taken data-med-id="${med.id}">Mark as taken</button>
+              <button type="button" class="btn btn-small btn-delete" data-delete-med data-med-id="${med.id}">Delete</button>
+            </div>
             </div>
           </div>
           <span class="status-pill status-${status.level}">
@@ -446,6 +764,54 @@ function renderMedications(filter, now) {
     })
     .join("");
 }
+
+// Event delegation: handle "Mark as taken" and "Edit" on medication cards
+medList.addEventListener("click", async (e) => {
+  const markBtn = e.target.closest("[data-mark-taken]");
+  if (markBtn) {
+    const id = markBtn.dataset.medId;
+    if (!id) return;
+    markBtn.disabled = true;
+    markBtn.textContent = "Recording…";
+    await updateLastTaken(id);
+    markBtn.disabled = false;
+    markBtn.textContent = "Mark as taken";
+    return;
+  }
+  const editBtn = e.target.closest("[data-edit-med]");
+  if (editBtn) {
+    const id = editBtn.dataset.medId;
+    if (!id) return;
+    const med = medications.find((m) => String(m.id) === String(id));
+    if (med) openEditMedModal(med);
+    return;
+  }
+  const updateStockBtn = e.target.closest("[data-update-stock]");
+  if (updateStockBtn) {
+    const id = updateStockBtn.dataset.medId;
+    if (!id) return;
+    const med = medications.find((m) => String(m.id) === String(id));
+    if (med) openUpdateStockModal(med);
+    return;
+  }
+  const deleteBtn = e.target.closest("[data-delete-med]");
+  if (deleteBtn) {
+    const id = deleteBtn.dataset.medId;
+    if (!id) return;
+    const med = medications.find((m) => String(m.id) === String(id));
+    const name = med ? med.name : "this medication";
+    if (!confirm(`Remove "${name}" from your list? This cannot be undone.`)) return;
+    deleteBtn.disabled = true;
+    deleteBtn.textContent = "Removing…";
+    try {
+      await deleteMedication(id);
+    } catch (err) {
+      alert("Could not delete medication. Check the console or your Supabase setup.");
+      deleteBtn.disabled = false;
+      deleteBtn.textContent = "Delete";
+    }
+  }
+});
 
 function renderReminders(now) {
   const upcoming = medications.flatMap((med) =>
@@ -490,7 +856,222 @@ function render(filter = "all") {
   renderDashboard(now);
   renderMedications(filter, now);
   renderReminders(now);
+  updateReminderBanner(now);
+}
+
+// --- Intelligent reminders ---
+const reminderBanner = document.getElementById("reminderBanner");
+const enableRemindersBtn = document.getElementById("enableReminders");
+
+// PRD: Intelligent Reminders — alerts to take medication; warnings when Rx is about to run out or expire.
+// Color-coded: GREEN = no pending, YELLOW = pending (within current time window), RED = missed / run out / expire.
+function getReminderState(now) {
+  const dueNow = medications.filter((med) => {
+    const status = getDoseStatus(med, now);
+    return status.level === "yellow";
+  });
+  const missedNow = medications.filter((med) => {
+    const status = getDoseStatus(med, now);
+    return status.label === "Missed Dose";
+  });
+  const lowOrExpiring = medications.filter((med) => {
+    const isLow = med.stock <= med.refillThreshold;
+    const expiresOn = new Date(med.expiresOn);
+    const daysToExpire = Math.ceil((expiresOn - now) / 86400000);
+    return isLow || (daysToExpire <= 30 && daysToExpire >= 0);
+  });
+  return { dueNow, missedNow, lowOrExpiring, lowOrExpiringCount: lowOrExpiring.length };
+}
+
+let reminderBannerDismissed = false;
+
+function applyFilterAndShowMedications(filter) {
+  filters.forEach((chip) => chip.classList.remove("is-active"));
+  const chip = document.querySelector(`[data-filter="${filter}"]`);
+  if (chip) chip.classList.add("is-active");
+  render(filter);
+  const panel = document.querySelector(".panel");
+  if (panel) panel.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function updateReminderBanner(now) {
+  if (!reminderBanner) return;
+  if (reminderBannerDismissed) {
+    reminderBanner.classList.remove("is-visible", "reminder-due", "reminder-warning", "reminder-missed");
+    reminderBanner.setAttribute("aria-hidden", "true");
+    reminderBanner.innerHTML = "";
+    return;
+  }
+  const { dueNow, missedNow, lowOrExpiringCount } = getReminderState(now);
+  const hasDue = dueNow.length > 0;
+  const hasMissed = missedNow.length > 0;
+  const hasRunOutOrExpire = lowOrExpiringCount > 0;
+
+  if (!hasDue && !hasMissed && !hasRunOutOrExpire) {
+    reminderBanner.classList.remove("is-visible", "reminder-due", "reminder-warning", "reminder-missed");
+    reminderBanner.setAttribute("aria-hidden", "true");
+    reminderBanner.innerHTML = "";
+    return;
+  }
+
+  reminderBanner.classList.add("is-visible");
+  reminderBanner.setAttribute("aria-hidden", "false");
+
+  const dueNames = dueNow.map((m) => m.name).join(", ");
+  const missedNames = missedNow.map((m) => m.name).join(", ");
+
+  // PRD: Alerts users to take medication; warnings when an Rx is about to run out or expire.
+  const parts = [];
+  if (hasMissed) {
+    parts.push(`<span class="reminder-block"><strong>You missed a dose</strong> — ${missedNames}. Take as soon as possible. <button type="button" class="reminder-link" data-show-filter="missed">Show</button></span>`);
+  }
+  if (hasDue) {
+    parts.push(`<span class="reminder-block"><strong>Time to take your medication</strong> — ${dueNames} (within current time window). <button type="button" class="reminder-link" data-show-filter="pending">Show</button></span>`);
+  }
+  if (hasRunOutOrExpire) {
+    parts.push(`<span class="reminder-block"><strong>An Rx is about to run out or expire</strong> — ${lowOrExpiringCount} medication(s). <button type="button" class="reminder-link" data-show-filter="low">Show low stock</button> <button type="button" class="reminder-link" data-show-filter="expiring">Show expiring</button></span>`);
+  }
+
+  reminderBanner.className = "reminder-banner is-visible " + (hasMissed ? "reminder-missed" : hasDue ? "reminder-due" : "reminder-warning");
+  reminderBanner.innerHTML = `
+    <div class="reminder-banner-content">
+      ${parts.join(" ")}
+    </div>
+    <div class="reminder-banner-actions">
+      <button type="button" class="reminder-banner-dismiss" data-dismiss-reminder>Dismiss</button>
+    </div>
+  `;
+}
+
+if (reminderBanner) {
+  reminderBanner.addEventListener("click", (e) => {
+    if (e.target.closest("[data-dismiss-reminder]")) {
+      reminderBannerDismissed = true;
+      updateReminderBanner(new Date());
+      return;
+    }
+    const showBtn = e.target.closest("[data-show-filter]");
+    if (showBtn) {
+      const filter = showBtn.dataset.showFilter;
+      applyFilterAndShowMedications(filter);
+    }
+  });
+}
+
+// Browser notifications: throttle so we don't spam (same med within 30 min)
+const lastNotifiedDoseAt = {};
+const DOSE_NOTIFY_COOLDOWN_MS = 30 * 60 * 1000;
+
+function maybeShowDoseNotifications(now) {
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  const { dueNow } = getReminderState(now);
+  dueNow.forEach((med) => {
+    const key = `${med.id}-${now.getDate()}-${now.getHours()}`;
+    const last = lastNotifiedDoseAt[key];
+    if (last && now - last < DOSE_NOTIFY_COOLDOWN_MS) return;
+    try {
+      new Notification("Time to take your medication", {
+        body: med.name + (med.dosage ? " · " + med.dosage : ""),
+        icon: "/favicon.ico"
+      });
+      lastNotifiedDoseAt[key] = now.getTime();
+    } catch (e) {
+      console.warn("Notification failed:", e);
+    }
+  });
+}
+
+// PRD: Warnings when an Rx is about to run out or expire.
+function maybeShowLowExpiringNotification(now) {
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  const key = "lowExpiringNotified";
+  if (sessionStorage.getItem(key)) return;
+  const { lowOrExpiringCount } = getReminderState(now);
+  if (lowOrExpiringCount === 0) return;
+  try {
+    new Notification("An Rx is about to run out or expire", {
+      body: `${lowOrExpiringCount} medication(s) need attention. Refill or check expiry dates.`,
+      icon: "/favicon.ico"
+    });
+    sessionStorage.setItem(key, "1");
+  } catch (e) {
+    console.warn("Notification failed:", e);
+  }
+}
+
+// PRD: Alerts users to take medication (including missed doses).
+function maybeShowMissedNotification(now) {
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  const key = "missedNotified";
+  if (sessionStorage.getItem(key)) return;
+  const { missedNow } = getReminderState(now);
+  if (missedNow.length === 0) return;
+  const names = missedNow.map((m) => m.name).join(", ");
+  try {
+    new Notification("You missed a dose", {
+      body: `${names}. Take as soon as possible.`,
+      icon: "/favicon.ico"
+    });
+    sessionStorage.setItem(key, "1");
+  } catch (e) {
+    console.warn("Notification failed:", e);
+  }
+}
+
+let reminderIntervalId = null;
+
+function startReminderLoop() {
+  if (reminderIntervalId) return;
+  const run = () => {
+    const now = new Date();
+    maybeShowDoseNotifications(now);
+    maybeShowMissedNotification(now);
+    maybeShowLowExpiringNotification(now);
+  };
+  run();
+  reminderIntervalId = setInterval(run, 60 * 1000);
+}
+
+function updateEnableRemindersButton() {
+  if (!enableRemindersBtn) return;
+  if (!("Notification" in window)) {
+    enableRemindersBtn.style.display = "none";
+    return;
+  }
+  if (Notification.permission === "granted") {
+    enableRemindersBtn.textContent = "Reminders on";
+    enableRemindersBtn.disabled = true;
+    startReminderLoop();
+    return;
+  }
+  enableRemindersBtn.textContent = "Enable reminders";
+  enableRemindersBtn.disabled = false;
+}
+
+if (enableRemindersBtn) {
+  enableRemindersBtn.addEventListener("click", async () => {
+    if (!("Notification" in window)) return;
+    if (Notification.permission === "granted") {
+      startReminderLoop();
+      updateEnableRemindersButton();
+      return;
+    }
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission === "granted") {
+        startReminderLoop();
+        updateEnableRemindersButton();
+      } else {
+        alert("Reminders are blocked. You can still see in-app reminders when doses are due.");
+      }
+    } catch (e) {
+      console.error("Notification permission error:", e);
+    }
+  });
 }
 
 // Initialize app by loading medications from Supabase
 loadMedications();
+
+// Start reminder loop if permission was already granted (e.g. previous visit)
+updateEnableRemindersButton();
