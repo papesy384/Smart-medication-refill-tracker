@@ -257,6 +257,7 @@ function closeAddMedModal() {
   if (addMedTitleEl) addMedTitleEl.textContent = "Add Medication";
   if (addMedBarcodeSection) addMedBarcodeSection.style.display = "";
   stopScanCamera();
+  document.getElementById("addMedication")?.focus();
   addMedModal.classList.remove("is-open");
   addMedModal.setAttribute("aria-hidden", "true");
   addMedForm.reset();
@@ -294,6 +295,9 @@ function stopScanCamera() {
     scanStream = null;
   }
   if (scanAnimationId) cancelAnimationFrame(scanAnimationId);
+  if (scanOverlay.contains(document.activeElement)) {
+    medBarcodeInput?.focus();
+  }
   scanOverlay.classList.remove("is-open");
   scanOverlay.setAttribute("aria-hidden", "true");
   scanVideo.srcObject = null;
@@ -386,6 +390,9 @@ function openUpdateStockModal(med) {
 function closeUpdateStockModal() {
   updateStockMedId = null;
   if (updateStockModalEl) {
+    if (updateStockModalEl.contains(document.activeElement)) {
+      document.getElementById("addMedication")?.focus();
+    }
     updateStockModalEl.classList.remove("is-open");
     updateStockModalEl.setAttribute("aria-hidden", "true");
   }
@@ -444,6 +451,9 @@ function openCaregiverModal() {
 
 function closeCaregiverModal() {
   if (caregiverModalEl) {
+    if (caregiverModalEl.contains(document.activeElement)) {
+      openCaregiverInfoBtn?.focus();
+    }
     caregiverModalEl.classList.remove("is-open");
     caregiverModalEl.setAttribute("aria-hidden", "true");
   }
@@ -499,6 +509,9 @@ function openFeedbackModal() {
 
 function closeFeedbackModal() {
   if (feedbackModalEl) {
+    if (feedbackModalEl.contains(document.activeElement)) {
+      openFeedbackBtn?.focus();
+    }
     feedbackModalEl.classList.remove("is-open");
     feedbackModalEl.setAttribute("aria-hidden", "true");
   }
@@ -777,7 +790,10 @@ function renderMedications(filter, now) {
               <span>Expires: ${formatDate(new Date(med.expiresOn))}</span>
             </div>
             <div class="med-card-actions">
-              <button type="button" class="btn btn-small btn-primary" data-mark-taken data-med-id="${med.id}">Mark as taken</button>
+              ${status.label === "Expired"
+                ? `<span class="med-expired-warning">Expired, do not take</span>`
+                : `<button type="button" class="btn btn-small btn-primary" data-mark-taken data-med-id="${med.id}">Mark as taken</button>`
+              }
               <div class="med-card-more">
                 <button type="button" class="btn btn-small btn-secondary" data-more-menu aria-haspopup="true" aria-expanded="false">More</button>
                 <div class="med-card-dropdown" role="menu" hidden>

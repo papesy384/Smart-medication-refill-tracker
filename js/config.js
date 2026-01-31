@@ -1,7 +1,7 @@
 // Supabase configuration
 // Replace these with your actual Supabase project credentials
-window.SUPABASE_URL = 'YOUR_SUPABASE_URL'; // e.g., https://xxxxx.supabase.co
-window.SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
+window.SUPABASE_URL = 'https://ojncpdnnuouatblpavye.supabase.co';
+window.SUPABASE_ANON_KEY = 'sb_publishable_1FxwRDvE5bFTU5YxpPiEWw_UOcS-Pt7';
 
 // Only create the client when URL is valid (avoids "Invalid supabaseUrl" and "supabase.from is not a function")
 const url = window.SUPABASE_URL || '';
